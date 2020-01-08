@@ -59,14 +59,14 @@ IJKSampleAspectRatioMake(NSInteger numerator, NSInteger denominator)
 }
 
 
-
+//消息体定义
 @interface IJKFFMoviePlayerMessage : NSObject {
 @public
     AVMessage _msg;
 }
 @end
 
-
+//消息池定义
 @interface IJKFFMoviePlayerMessagePool : NSObject
 
 - (IJKFFMoviePlayerMessagePool *)init;

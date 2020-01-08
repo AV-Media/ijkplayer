@@ -35,6 +35,7 @@
 
 IjkMediaPlayer *ijkmp_ios_create(int (*msg_loop)(void*))
 {
+    //创建播放器
     IjkMediaPlayer *mp = ijkmp_create(msg_loop);
     if (!mp)
         goto fail;

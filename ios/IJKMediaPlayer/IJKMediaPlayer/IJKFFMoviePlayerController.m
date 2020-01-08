@@ -1030,6 +1030,7 @@ inline static void fillMetaInternal(NSMutableDictionary *meta, IjkMediaMeta *raw
     }
 }
 
+//向外发送消息
 - (void)postEvent: (IJKFFMoviePlayerMessage *)msg
 {
     if (!msg)
@@ -1341,10 +1342,12 @@ inline static void fillMetaInternal(NSMutableDictionary *meta, IjkMediaMeta *raw
             break;
     }
 
+    //回收到消息对象缓存池中
     [_msgPool recycle:msg];
 }
 
 - (IJKFFMoviePlayerMessage *) obtainMessage {
+    //从消息对象缓存池中获取到消息
     return [_msgPool obtain];
 }
 
@@ -1359,20 +1362,22 @@ int media_player_msg_loop(void* arg)
         __weak IJKFFMoviePlayerController *ffpController = ffplayerRetain(ijkmp_set_weak_thiz(mp, NULL));
         while (ffpController) {
             @autoreleasepool {
+                //从消息对象缓存池中取出缓存的消息对象
                 IJKFFMoviePlayerMessage *msg = [ffpController obtainMessage];
+                //这里不会等于nil吧，看obtainMessage的实现
                 if (!msg)
                     break;
-
-                int retval = ijkmp_get_msg(mp, &msg->_msg, 1);
+                // 从ijkplayer底层中获取消息
+                int retval = ijkmp_get_msg(mp, &msg->_msg/*AVMessage 类型*/, 1);
                 if (retval < 0)
                     break;
 
                 // block-get should never return 0
+                //将消息发送出去
                 assert(retval > 0);
                 [ffpController performSelectorOnMainThread:@selector(postEvent:) withObject:msg waitUntilDone:NO];
             }
         }
-
         // retained in prepare_async, before SDL_CreateThreadEx
         ijkmp_dec_ref_p(&mp);
         return 0;

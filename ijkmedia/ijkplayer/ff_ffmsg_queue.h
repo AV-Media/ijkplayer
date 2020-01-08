@@ -31,12 +31,12 @@
 // #define FFP_SHOW_MSG_RECYCLE
 
 typedef struct AVMessage {
-    int what;
+    int what; // 消息类型
     int arg1;
     int arg2;
     void *obj;
     void (*free_l)(void *obj);
-    struct AVMessage *next;
+    struct AVMessage *next;//下一个消息
 } AVMessage;
 
 typedef struct MessageQueue {
@@ -70,6 +70,7 @@ inline static int msg_queue_put_private(MessageQueue *q, AVMessage *msg)
 #ifdef FFP_MERGE
     msg1 = av_malloc(sizeof(AVMessage));
 #else
+    //找到可复用的回收消息
     msg1 = q->recycle_msg;
     if (msg1) {
         q->recycle_msg = msg1->next;
@@ -88,15 +89,19 @@ inline static int msg_queue_put_private(MessageQueue *q, AVMessage *msg)
     if (!msg1)
         return -1;
 
+    //将消息赋给msg1，将msg1尾部设置为nil
     *msg1 = *msg;
     msg1->next = NULL;
 
     if (!q->last_msg)
+        //空队列则添加到队列头
         q->first_msg = msg1;
     else
+        //添加到队列最末尾
         q->last_msg->next = msg1;
     q->last_msg = msg1;
     q->nb_messages++;
+    //发送信号唤醒获取消息的等待线程
     SDL_CondSignal(q->cond);
     return 0;
 }
@@ -226,6 +231,7 @@ inline static void msg_queue_start(MessageQueue *q)
 
     AVMessage msg;
     msg_init_msg(&msg);
+    //FFP_MSG_FLUSH放入队列中
     msg.what = FFP_MSG_FLUSH;
     msg_queue_put_private(q, &msg);
     SDL_UnlockMutex(q->mutex);
@@ -240,6 +246,7 @@ inline static int msg_queue_get(MessageQueue *q, AVMessage *msg, int block)
     SDL_LockMutex(q->mutex);
 
     for (;;) {
+        //中断循环的请求
         if (q->abort_request) {
             ret = -1;
             break;
@@ -247,10 +254,12 @@ inline static int msg_queue_get(MessageQueue *q, AVMessage *msg, int block)
 
         msg1 = q->first_msg;
         if (msg1) {
+            //将消息的下一个设置为第一个消息
             q->first_msg = msg1->next;
             if (!q->first_msg)
                 q->last_msg = NULL;
             q->nb_messages--;
+            //将它传递给上层
             *msg = *msg1;
             msg1->obj = NULL;
 #ifdef FFP_MERGE
@@ -259,12 +268,14 @@ inline static int msg_queue_get(MessageQueue *q, AVMessage *msg, int block)
             msg1->next = q->recycle_msg;
             q->recycle_msg = msg1;
 #endif
+            //返回成功
             ret = 1;
             break;
         } else if (!block) {
             ret = 0;
             break;
         } else {
+            //没有消息的话在这阻塞，只有在接到pthread_cond_signal才会往下走
             SDL_CondWait(q->cond, q->mutex);
         }
     }

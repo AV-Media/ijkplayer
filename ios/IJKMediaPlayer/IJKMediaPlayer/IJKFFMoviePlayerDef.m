@@ -34,6 +34,7 @@
 {
     self = [super init];
     if (self) {
+        //实际上是一个数组
         _array = [[NSMutableArray alloc] init];
     }
     return self;
@@ -46,11 +47,13 @@
     @synchronized(self) {
         NSUInteger count = [_array count];
         if (count > 0) {
+            //将最后一个从池中取出
             msg = [_array objectAtIndex:count - 1];
             [_array removeLastObject];
         }
     }
 
+    //如果没有则新建一个返回
     if (!msg)
         msg = [[IJKFFMoviePlayerMessage alloc] init];
 
@@ -63,6 +66,7 @@
         return;
     msg_free_res(&msg->_msg);
     @synchronized(self) {
+        //当消息数小于10的时候添加到消息池中
         if ([_array count] <= 10)
             [_array addObject:msg];
     }

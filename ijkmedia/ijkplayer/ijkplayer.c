@@ -114,18 +114,23 @@ void ijkmp_change_state_l(IjkMediaPlayer *mp, int new_state)
     ffp_notify_msg1(mp->ffplayer, FFP_MSG_PLAYBACK_STATE_CHANGED);
 }
 
+//为IjkMediaPlayer设置ffplayer以及msg_loop
 IjkMediaPlayer *ijkmp_create(int (*msg_loop)(void*))
 {
+    //为IjkMediaPlayer分配空间
     IjkMediaPlayer *mp = (IjkMediaPlayer *) mallocz(sizeof(IjkMediaPlayer));
     if (!mp)
         goto fail;
 
+    //创建ffplayer
     mp->ffplayer = ffp_create();
     if (!mp->ffplayer)
         goto fail;
 
+    //设置消息循环
     mp->msg_loop = msg_loop;
 
+    //增加引用
     ijkmp_inc_ref(mp);
     pthread_mutex_init(&mp->mutex, NULL);
 
@@ -402,11 +407,16 @@ static int ijkmp_prepare_async_l(IjkMediaPlayer *mp)
 
     ijkmp_change_state_l(mp, MP_STATE_ASYNC_PREPARING);
 
+    //开启底层的消息队列
     msg_queue_start(&mp->ffplayer->msg_queue);
 
     // released in msg_loop
     ijkmp_inc_ref(mp);
+
+    //创建一个线程用于处理消息，并且执行了ijkmp_msg_loop方法
+    //ijkmp_msg_loop方式是在我们初始化ijkplayer是调用的ijkmp_ios_create方法时传入的函数指针
     mp->msg_thread = SDL_CreateThreadEx(&mp->_msg_thread, ijkmp_msg_loop, mp, "ff_msg_loop");
+
     // msg_thread is detached inside msg_loop
     // TODO: 9 release weak_thiz if pthread_create() failed;
 
@@ -686,11 +696,14 @@ void *ijkmp_set_weak_thiz(IjkMediaPlayer *mp, void *weak_thiz)
 }
 
 /* need to call msg_free_res for freeing the resouce obtained in msg */
+//ijkplayer 底层消息循环
 int ijkmp_get_msg(IjkMediaPlayer *mp, AVMessage *msg, int block)
 {
     assert(mp);
     while (1) {
         int continue_wait_next_msg = 0;
+        //从播放器底层获取消息
+        //msg_queue_get是阻塞的只会在有新消息来的时候才会有返回值 不然它的线程阻塞的
         int retval = msg_queue_get(&mp->ffplayer->msg_queue, msg, block);
         if (retval <= 0)
             return retval;
