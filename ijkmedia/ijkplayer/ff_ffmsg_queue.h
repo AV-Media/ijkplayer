@@ -111,6 +111,7 @@ inline static int msg_queue_put(MessageQueue *q, AVMessage *msg)
     int ret;
 
     SDL_LockMutex(q->mutex);
+    //将消息添加到消息队列，并唤醒队列等待
     ret = msg_queue_put_private(q, msg);
     SDL_UnlockMutex(q->mutex);
 
@@ -146,6 +147,7 @@ inline static void msg_queue_put_simple3(MessageQueue *q, int what, int arg1, in
     msg.what = what;
     msg.arg1 = arg1;
     msg.arg2 = arg2;
+    //将消息添加到queue中
     msg_queue_put(q, &msg);
 }
 

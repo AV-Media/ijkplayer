@@ -405,12 +405,16 @@ void IJKFFIOStatCompleteRegister(void (*cb)(const char *url,
     if (!_mediaPlayer)
         return;
 
+    //设置屏幕状态
     [self setScreenOn:_keepScreenOnWhilePlaying];
 
+    //设置播放源
     ijkmp_set_data_source(_mediaPlayer, [_urlString UTF8String]);
     ijkmp_set_option(_mediaPlayer, IJKMP_OPT_CATEGORY_FORMAT, "safe", "0"); // for concat demuxer
 
     _monitor.prepareStartTick = (int64_t)SDL_GetTickHR();
+
+    //开始播放
     ijkmp_prepare_async(_mediaPlayer);
 }
 
@@ -1239,6 +1243,7 @@ inline static void fillMetaInternal(NSMutableDictionary *meta, IjkMediaMeta *raw
             // NSLog(@"FFP_MSG_BUFFERING_TIME_UPDATE: %d\n", avmsg->arg1);
             break;
         case FFP_MSG_PLAYBACK_STATE_CHANGED:
+            //将状态发送出去
             [[NSNotificationCenter defaultCenter]
              postNotificationName:IJKMPMoviePlayerPlaybackStateDidChangeNotification
              object:self];

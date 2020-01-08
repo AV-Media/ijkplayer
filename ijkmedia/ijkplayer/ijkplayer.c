@@ -110,7 +110,9 @@ void ijkmp_io_stat_complete_register(void (*cb)(const char *url,
 
 void ijkmp_change_state_l(IjkMediaPlayer *mp, int new_state)
 {
+    //设置最新的状态
     mp->mp_state = new_state;
+    //通知状态改变
     ffp_notify_msg1(mp->ffplayer, FFP_MSG_PLAYBACK_STATE_CHANGED);
 }
 
@@ -349,6 +351,7 @@ static int ijkmp_set_data_source_l(IjkMediaPlayer *mp, const char *url)
     assert(mp);
     assert(url);
 
+    // 如果是下面这些状态则直接返回
     // MPST_RET_IF_EQ(mp->mp_state, MP_STATE_IDLE);
     MPST_RET_IF_EQ(mp->mp_state, MP_STATE_INITIALIZED);
     MPST_RET_IF_EQ(mp->mp_state, MP_STATE_ASYNC_PREPARING);
@@ -361,10 +364,12 @@ static int ijkmp_set_data_source_l(IjkMediaPlayer *mp, const char *url)
     MPST_RET_IF_EQ(mp->mp_state, MP_STATE_END);
 
     freep((void**)&mp->data_source);
+    //将播放源设置到mediaplayer
     mp->data_source = strdup(url);
     if (!mp->data_source)
         return EIJK_OUT_OF_MEMORY;
 
+    //通知状态切换为初始化状态
     ijkmp_change_state_l(mp, MP_STATE_INITIALIZED);
     return 0;
 }
@@ -375,6 +380,7 @@ int ijkmp_set_data_source(IjkMediaPlayer *mp, const char *url)
     assert(url);
     MPTRACE("ijkmp_set_data_source(url=\"%s\")\n", url);
     pthread_mutex_lock(&mp->mutex);
+    //设置播放源
     int retval = ijkmp_set_data_source_l(mp, url);
     pthread_mutex_unlock(&mp->mutex);
     MPTRACE("ijkmp_set_data_source(url=\"%s\")=%d\n", url, retval);
