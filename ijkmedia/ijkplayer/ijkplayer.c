@@ -398,6 +398,7 @@ static int ijkmp_prepare_async_l(IjkMediaPlayer *mp)
 {
     assert(mp);
 
+    //状态机检测，只有在MP_STATE_INITIALIZED以及MP_STATE_STOPPED的情况下才会继续往下走
     MPST_RET_IF_EQ(mp->mp_state, MP_STATE_IDLE);
     // MPST_RET_IF_EQ(mp->mp_state, MP_STATE_INITIALIZED);
     MPST_RET_IF_EQ(mp->mp_state, MP_STATE_ASYNC_PREPARING);
@@ -409,11 +410,13 @@ static int ijkmp_prepare_async_l(IjkMediaPlayer *mp)
     MPST_RET_IF_EQ(mp->mp_state, MP_STATE_ERROR);
     MPST_RET_IF_EQ(mp->mp_state, MP_STATE_END);
 
+    //检查播放数据源
     assert(mp->data_source);
 
+    //通知上层状态改为MP_STATE_ASYNC_PREPARING
     ijkmp_change_state_l(mp, MP_STATE_ASYNC_PREPARING);
 
-    //开启底层的消息队列
+    //开启底层的消息队列，向消息队列发送一个FFP_MSG_FLUSH消息
     msg_queue_start(&mp->ffplayer->msg_queue);
 
     // released in msg_loop
@@ -426,6 +429,7 @@ static int ijkmp_prepare_async_l(IjkMediaPlayer *mp)
     // msg_thread is detached inside msg_loop
     // TODO: 9 release weak_thiz if pthread_create() failed;
 
+    //开始prepare
     int retval = ffp_prepare_async_l(mp->ffplayer, mp->data_source);
     if (retval < 0) {
         ijkmp_change_state_l(mp, MP_STATE_ERROR);
@@ -440,6 +444,7 @@ int ijkmp_prepare_async(IjkMediaPlayer *mp)
     assert(mp);
     MPTRACE("ijkmp_prepare_async()\n");
     pthread_mutex_lock(&mp->mutex);
+    //开始异步prepare
     int retval = ijkmp_prepare_async_l(mp);
     pthread_mutex_unlock(&mp->mutex);
     MPTRACE("ijkmp_prepare_async()=%d\n", retval);

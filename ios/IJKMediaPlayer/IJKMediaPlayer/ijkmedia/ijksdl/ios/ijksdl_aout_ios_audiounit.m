@@ -43,6 +43,7 @@ static int aout_open_audio(SDL_Aout *aout, const SDL_AudioSpec *desired, SDL_Aud
     SDLTRACE("aout_open_audio()\n");
     SDL_Aout_Opaque *opaque = aout->opaque;
 
+    //设置音频输出控制
     opaque->aoutController = [[IJKSDLAudioQueueController alloc] initWithAudioSpec:desired];
     if (!opaque->aoutController) {
         ALOGE("aout_open_audio_n: failed to new AudioTrcak()\n");
@@ -55,6 +56,7 @@ static int aout_open_audio(SDL_Aout *aout, const SDL_AudioSpec *desired, SDL_Aud
     return 0;
 }
 
+//打开关闭音频输出
 static void aout_pause_audio(SDL_Aout *aout, int pause_on)
 {
     SDLTRACE("aout_pause_audio(%d)\n", pause_on);
@@ -67,6 +69,7 @@ static void aout_pause_audio(SDL_Aout *aout, int pause_on)
     }
 }
 
+//刷新音频输出
 static void aout_flush_audio(SDL_Aout *aout)
 {
     SDLTRACE("aout_flush_audio()\n");
@@ -75,6 +78,7 @@ static void aout_flush_audio(SDL_Aout *aout)
     [opaque->aoutController flush];
 }
 
+//关闭音频输出
 static void aout_close_audio(SDL_Aout *aout)
 {
     SDLTRACE("aout_close_audio()\n");
@@ -83,6 +87,7 @@ static void aout_close_audio(SDL_Aout *aout)
     [opaque->aoutController close];
 }
 
+//设置输出速率
 static void aout_set_playback_rate(SDL_Aout *aout, float playbackRate)
 {
     SDLTRACE("aout_close_audio()\n");
@@ -91,6 +96,7 @@ static void aout_set_playback_rate(SDL_Aout *aout, float playbackRate)
     [opaque->aoutController setPlaybackRate:playbackRate];
 }
 
+//设置输出音量
 static void aout_set_playback_volume(SDL_Aout *aout, float volume)
 {
     SDLTRACE("aout_set_volume()\n");
@@ -110,6 +116,7 @@ static int aout_get_persecond_callbacks(SDL_Aout *aout)
     return SDL_IOS_AUDIO_MAX_CALLBACKS_PER_SEC;
 }
 
+//释放音频输出控制器
 static void aout_free_l(SDL_Aout *aout)
 {
     if (!aout)

@@ -4268,6 +4268,7 @@ int ffp_prepare_async_l(FFPlayer *ffp, const char *file_name)
         }
     }
 
+    //显示各个模块的版本信息
     av_log(NULL, AV_LOG_INFO, "===== versions =====\n");
     ffp_show_version_str(ffp, "ijkplayer",      ijk_version_info());
     ffp_show_version_str(ffp, "FFmpeg",         av_version_info());
@@ -4285,6 +4286,8 @@ int ffp_prepare_async_l(FFPlayer *ffp, const char *file_name)
     av_log(NULL, AV_LOG_INFO, "===================\n");
 
     av_opt_set_dict(ffp, &ffp->player_opts);
+
+    //创建audio output 节点
     if (!ffp->aout) {
         ffp->aout = ffpipeline_open_audio_output(ffp->pipeline, ffp);
         if (!ffp->aout)
@@ -4297,7 +4300,7 @@ int ffp_prepare_async_l(FFPlayer *ffp, const char *file_name)
         ffp->vfilters_list[ffp->nb_vfilters - 1] = ffp->vfilter0;
     }
 #endif
-
+    //打开视频流
     VideoState *is = stream_open(ffp, file_name, NULL);
     if (!is) {
         av_log(NULL, AV_LOG_WARNING, "ffp_prepare_async_l: stream_open failed OOM");

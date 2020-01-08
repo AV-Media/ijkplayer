@@ -31,6 +31,7 @@
 
 #define kIJKAudioQueueNumberBuffers (3)
 
+//音频输出控制器，后续解析
 @implementation IJKSDLAudioQueueController {
     AudioQueueRef _audioQueueRef;
     AudioQueueBufferRef _audioQueueBufferRefArray[kIJKAudioQueueNumberBuffers];

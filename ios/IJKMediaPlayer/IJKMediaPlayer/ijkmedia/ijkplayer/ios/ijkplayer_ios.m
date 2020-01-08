@@ -40,10 +40,12 @@ IjkMediaPlayer *ijkmp_ios_create(int (*msg_loop)(void*))
     if (!mp)
         goto fail;
 
+    //创建图像渲染对象SDL_Vout
     mp->ffplayer->vout = SDL_VoutIos_CreateForGLES2();
     if (!mp->ffplayer->vout)
         goto fail;
 
+    //创建平台相关的IJKFF_Pipeline对象，包括视频解码以及音频输出部分
     mp->ffplayer->pipeline = ffpipeline_create_from_ios(mp->ffplayer);
     if (!mp->ffplayer->pipeline)
         goto fail;

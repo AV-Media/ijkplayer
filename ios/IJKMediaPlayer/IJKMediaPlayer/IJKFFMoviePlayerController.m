@@ -1043,6 +1043,7 @@ inline static void fillMetaInternal(NSMutableDictionary *meta, IjkMediaMeta *raw
     AVMessage *avmsg = &msg->_msg;
     switch (avmsg->what) {
         case FFP_MSG_FLUSH:
+            //上层不做处理
             break;
         case FFP_MSG_ERROR: {
             NSLog(@"FFP_MSG_ERROR: %d\n", avmsg->arg1);
@@ -1259,6 +1260,7 @@ inline static void fillMetaInternal(NSMutableDictionary *meta, IjkMediaMeta *raw
             break;
         }
         case FFP_MSG_VIDEO_DECODER_OPEN: {
+            //发出解码器打开的通知IJKMPMoviePlayerVideoDecoderOpenNotification
             _isVideoToolboxOpen = avmsg->arg1;
             NSLog(@"FFP_MSG_VIDEO_DECODER_OPEN: %@\n", _isVideoToolboxOpen ? @"true" : @"false");
             [[NSNotificationCenter defaultCenter]

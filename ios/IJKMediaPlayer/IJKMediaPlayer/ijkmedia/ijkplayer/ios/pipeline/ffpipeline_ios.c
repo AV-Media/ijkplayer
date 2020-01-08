@@ -40,18 +40,24 @@ static IJKFF_Pipenode *func_open_video_decoder(IJKFF_Pipeline *pipeline, FFPlaye
     IJKFF_Pipenode* node = NULL;
     IJKFF_Pipeline_Opaque *opaque = pipeline->opaque;
     if (ffp->videotoolbox) {
+        //通过videotoolbox创建ffpipenode
         node = ffpipenode_create_video_decoder_from_ios_videotoolbox(ffp);
         if (!node)
+            //失败的情况下切换到ffmpeg解码器
             ALOGE("vtb fail!!! switch to ffmpeg decode!!!! \n");
     }
     if (node == NULL) {
+        //通过ffplay创建解码器
         node = ffpipenode_create_video_decoder_from_ffplay(ffp);
+        //解码器类型
         ffp->stat.vdec_type = FFP_PROPV_DECODER_AVCODEC;
+        //videotoolbox是否打开
         opaque->is_videotoolbox_open = false;
     } else {
         ffp->stat.vdec_type = FFP_PROPV_DECODER_VIDEOTOOLBOX;
         opaque->is_videotoolbox_open = true;
     }
+    //发送通知
     ffp_notify_msg2(ffp, FFP_MSG_VIDEO_DECODER_OPEN, opaque->is_videotoolbox_open);
     return node;
 }
@@ -71,6 +77,7 @@ IJKFF_Pipeline *ffpipeline_create_from_ios(FFPlayer *ffp)
     if (!pipeline)
         return pipeline;
 
+    //创建IJKFF_Pipeline_Opaque
     IJKFF_Pipeline_Opaque *opaque     = pipeline->opaque;
     opaque->ffp                       = ffp;
     pipeline->func_destroy            = func_destroy;
