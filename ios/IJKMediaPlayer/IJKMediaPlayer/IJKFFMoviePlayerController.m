@@ -180,11 +180,15 @@ void IJKFFIOStatCompleteRegister(void (*cb)(const char *url,
 
     self = [super init];
     if (self) {
+        //1. ijk所需要的音视频组件初始化
         ijkmp_global_init();
+        //回调初始化
         ijkmp_global_set_inject_callback(ijkff_inject_callback);
 
+        //版本检查
         [IJKFFMoviePlayerController checkIfFFmpegVersionMatch:NO];
 
+        //2. ijk 配置
         if (options == nil)
             options = [IJKFFOptions optionsByDefault];
 
@@ -198,24 +202,29 @@ void IJKFFIOStatCompleteRegister(void (*cb)(const char *url,
         memset(&_cacheStat, 0, sizeof(_cacheStat));
         _monitor = [[IJKFFMonitor alloc] init];
 
-        // init media resource
+        // 3. init media resource
         _urlString = aUrlString;
 
-        // init player
-        _mediaPlayer = ijkmp_ios_create(media_player_msg_loop);
+        // 4. 创建播放器
+        _mediaPlayer = ijkmp_ios_create(media_player_msg_loop/*对应的消息循环*/);
+        //消息池
         _msgPool = [[IJKFFMoviePlayerMessagePool alloc] init];
+        //弱引用
         IJKWeakHolder *weakHolder = [IJKWeakHolder new];
         weakHolder.object = self;
 
+        //不懂 感觉很关键
         ijkmp_set_weak_thiz(_mediaPlayer, (__bridge_retained void *) self);
         ijkmp_set_inject_opaque(_mediaPlayer, (__bridge_retained void *) weakHolder);
         ijkmp_set_ijkio_inject_opaque(_mediaPlayer, (__bridge_retained void *)weakHolder);
         ijkmp_set_option_int(_mediaPlayer, IJKMP_OPT_CATEGORY_PLAYER, "start-on-prepared", _shouldAutoplay ? 1 : 0);
 
-        // init video sink
+        // 5. init video sink  初始化视频接收器
         _glView = [[IJKSDLGLView alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
         _glView.isThirdGLView = NO;
         _view = _glView;
+        
+        //弹窗？？
         _hudViewController = [[IJKSDLHudViewController alloc] init];
         [_hudViewController setRect:_glView.frame];
         _shouldShowHudView = NO;
@@ -244,9 +253,10 @@ void IJKFFIOStatCompleteRegister(void (*cb)(const char *url,
 #else
         [IJKFFMoviePlayerController setLogLevel:k_IJK_LOG_SILENT];
 #endif
-        // init audio sink
+        // 6. init audio sink 初始化音频接收器
         [[IJKAudioKit sharedInstance] setupAudioSession];
 
+        // 7. 将options应用到_mediaPlayer
         [options applyTo:_mediaPlayer];
         _pauseInBackground = NO;
 
@@ -254,6 +264,13 @@ void IJKFFIOStatCompleteRegister(void (*cb)(const char *url,
         _keepScreenOnWhilePlaying = YES;
         [self setScreenOn:YES];
 
+        // 8. 注册对应的通知
+        // AVAudioSessionInterruptionNotification
+        // UIApplicationWillEnterForegroundNotification
+        // UIApplicationDidBecomeActiveNotification
+        // UIApplicationWillResignActiveNotification
+        // UIApplicationDidEnterBackgroundNotification
+        // UIApplicationWillTerminateNotification
         _notificationManager = [[IJKNotificationManager alloc] init];
         [self registerApplicationObservers];
     }
