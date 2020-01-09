@@ -576,6 +576,7 @@ static int decoder_decode_frame(FFPlayer *ffp, Decoder *d, AVFrame *frame, AVSub
 
                 switch (d->avctx->codec_type) {
                     case AVMEDIA_TYPE_VIDEO:
+                        //解码器从缓存中取出数据
                         ret = avcodec_receive_frame(d->avctx, frame);
                         if (ret >= 0) {
                             ffp->stat.vdps = SDL_SpeedSamplerAdd(&ffp->vdps_sampler, FFP_SHOW_VDPS_AVCODEC, "vdps[avcodec]");
@@ -587,6 +588,7 @@ static int decoder_decode_frame(FFPlayer *ffp, Decoder *d, AVFrame *frame, AVSub
                         }
                         break;
                     case AVMEDIA_TYPE_AUDIO:
+                        //解码器从缓存中取出数据
                         ret = avcodec_receive_frame(d->avctx, frame);
                         if (ret >= 0) {
                             AVRational tb = (AVRational){1, frame->sample_rate};
@@ -1620,6 +1622,7 @@ static int queue_picture(FFPlayer *ffp, AVFrame *src_frame, double pts, double d
     vp->uploaded = 0;
 #endif
 
+    //创建overlay
     /* alloc or resize hardware picture buffer */
     if (!vp->bmp || !vp->allocated ||
         vp->width  != src_frame->width ||
@@ -1656,6 +1659,7 @@ static int queue_picture(FFPlayer *ffp, AVFrame *src_frame, double pts, double d
         // sws_getCachedContext(...);
 #endif
 #endif
+        //填充overlay
         // FIXME: set swscale options
         if (SDL_VoutFillFrameYUVOverlay(vp->bmp, src_frame) < 0) {
             av_log(NULL, AV_LOG_FATAL, "Cannot initialize the conversion context\n");
@@ -1676,7 +1680,9 @@ static int queue_picture(FFPlayer *ffp, AVFrame *src_frame, double pts, double d
         av_frame_move_ref(vp->frame, src_frame);
 #endif
         frame_queue_push(&is->pictq);
+        
         if (!is->viddec.first_frame_decoded) {
+            //首帧解码成功处理
             ALOGD("Video: first frame decoded\n");
             ffp_notify_msg1(ffp, FFP_MSG_VIDEO_DECODED_START);
             is->viddec.first_frame_decoded_time = SDL_GetTickHR();
@@ -1692,6 +1698,7 @@ static int get_video_frame(FFPlayer *ffp, AVFrame *frame)
     int got_picture;
 
     ffp_video_statistic_l(ffp);
+    //调用decoder_decode_frame 解码数据帧
     if ((got_picture = decoder_decode_frame(ffp, &is->viddec, frame, NULL)) < 0)
         return -1;
 
@@ -2177,11 +2184,13 @@ static int ffplay_video_thread(void *arg)
 {
     FFPlayer *ffp = arg;
     VideoState *is = ffp->is;
+    //帧
     AVFrame *frame = av_frame_alloc();
     double pts;
     double duration;
     int ret;
     AVRational tb = is->video_st->time_base;
+    //帧速率
     AVRational frame_rate = av_guess_frame_rate(is->ic, is->video_st, NULL);
     int64_t dst_pts = -1;
     int64_t last_dst_pts = -1;
@@ -2213,7 +2222,8 @@ static int ffplay_video_thread(void *arg)
     }
 
     for (;;) {
-        ret = get_video_frame(ffp, frame);
+        //从解码器中获取视频帧
+        ret = get_video_frame(ffp, frame/*放到帧结构中*/);
         if (ret < 0)
             goto the_end;
         if (!ret)
@@ -2318,6 +2328,7 @@ static int ffplay_video_thread(void *arg)
 #endif
             duration = (frame_rate.num && frame_rate.den ? av_q2d((AVRational){frame_rate.den, frame_rate.num}) : 0);
             pts = (frame->pts == AV_NOPTS_VALUE) ? NAN : frame->pts * av_q2d(tb);
+            //将解码后的数据放到pictq中
             ret = queue_picture(ffp, frame, pts, duration, frame->pkt_pos, is->viddec.pkt_serial);
             av_frame_unref(frame);
 #if CONFIG_AVFILTER
@@ -2342,6 +2353,7 @@ static int video_thread(void *arg)
     int       ret = 0;
 
     if (ffp->node_vdec) {
+        //视频解码线程
         ret = ffpipenode_run_sync(ffp->node_vdec);
     }
     return ret;

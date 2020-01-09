@@ -75,6 +75,7 @@ void ffpipenode_free_p(IJKFF_Pipenode **node)
 
 int ffpipenode_run_sync(IJKFF_Pipenode *node)
 {
+    //运行Pipenode的func_run_sync方法
     return node->func_run_sync(node);
 }
 

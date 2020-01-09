@@ -34,6 +34,7 @@ static void func_destroy(IJKFF_Pipenode *node)
     // do nothing
 }
 
+//ffplayer 解码线程
 static int func_run_sync(IJKFF_Pipenode *node)
 {
     IJKFF_Pipenode_Opaque *opaque = node->opaque;
