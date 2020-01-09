@@ -878,6 +878,7 @@ static void video_image_display2(FFPlayer *ffp)
     Frame *vp;
     Frame *sp = NULL;
 
+    //从pictq中读取当前需要显示视频帧
     vp = frame_queue_peek_last(&is->pictq);
 
     if (vp->bmp) {
