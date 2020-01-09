@@ -903,6 +903,7 @@ static void video_image_display2(FFPlayer *ffp)
             }
         }
         if (ffp->render_wait_start && !ffp->start_on_prepared && is->pause_req) {
+            //开始渲染
             if (!ffp->first_video_frame_rendered) {
                 ffp->first_video_frame_rendered = 1;
                 ffp_notify_msg1(ffp, FFP_MSG_VIDEO_RENDERING_START);
@@ -911,6 +912,7 @@ static void video_image_display2(FFPlayer *ffp)
                 SDL_Delay(20);
             }
         }
+        //进行渲染
         SDL_VoutDisplayYUVOverlay(ffp->vout, vp->bmp);
         ffp->stat.vfps = SDL_SpeedSamplerAdd(&ffp->vfps_sampler, FFP_SHOW_VFPS_FFPLAY, "vfps[ffplay]");
         if (!ffp->first_video_frame_rendered) {
@@ -1155,6 +1157,7 @@ static double get_master_clock(VideoState *is)
     return val;
 }
 
+//检查外部始终速度
 static void check_external_clock_speed(VideoState *is) {
    if ((is->video_stream >= 0 && is->videoq.nb_packets <= EXTERNAL_CLOCK_MIN_FRAMES) ||
        (is->audio_stream >= 0 && is->audioq.nb_packets <= EXTERNAL_CLOCK_MIN_FRAMES)) {
@@ -1314,6 +1317,7 @@ static void video_refresh(FFPlayer *opaque, double *remaining_time)
 
     Frame *sp, *sp2;
 
+    //获取时钟类型
     if (!is->paused && get_master_sync_type(is) == AV_SYNC_EXTERNAL_CLOCK && is->realtime)
         check_external_clock_speed(is);
 
@@ -1367,6 +1371,7 @@ retry:
 
             SDL_LockMutex(is->pictq.mutex);
             if (!isnan(vp->pts))
+                //更新pts
                 update_video_pts(is, vp->pts, vp->pos, vp->serial);
             SDL_UnlockMutex(is->pictq.mutex);
 
@@ -3831,6 +3836,7 @@ static int video_refresh_thread(void *arg)
             av_usleep((int)(int64_t)(remaining_time * 1000000.0));
         remaining_time = REFRESH_RATE;
         if (is->show_mode != SHOW_MODE_NONE && (!is->paused || is->force_refresh))
+            //视频渲染
             video_refresh(ffp, &remaining_time);
     }
 
