@@ -2821,15 +2821,19 @@ static int stream_component_open(FFPlayer *ffp, int stream_index)
 
     if (stream_index < 0 || stream_index >= ic->nb_streams)
         return -1;
+
+    //创建解码器上下文
     avctx = avcodec_alloc_context3(NULL);
     if (!avctx)
         return AVERROR(ENOMEM);
 
+    //将解码器到参数注入到解码器中
     ret = avcodec_parameters_to_context(avctx, ic->streams[stream_index]->codecpar);
     if (ret < 0)
         goto fail;
     av_codec_set_pkt_timebase(avctx, ic->streams[stream_index]->time_base);
 
+    //根据codec_id 寻找解码器
     codec = avcodec_find_decoder(avctx->codec_id);
 
     switch (avctx->codec_type) {
@@ -2838,8 +2842,11 @@ static int stream_component_open(FFPlayer *ffp, int stream_index)
         case AVMEDIA_TYPE_VIDEO   : is->last_video_stream    = stream_index; forced_codec_name = ffp->video_codec_name; break;
         default: break;
     }
+    //通过名称寻找解码器
     if (forced_codec_name)
         codec = avcodec_find_decoder_by_name(forced_codec_name);
+    
+    //解码器寻找失败
     if (!codec) {
         if (forced_codec_name) av_log(NULL, AV_LOG_WARNING,
                                       "No codec could be found with name '%s'\n", forced_codec_name);
@@ -2849,6 +2856,7 @@ static int stream_component_open(FFPlayer *ffp, int stream_index)
         goto fail;
     }
 
+    //将解码器的id设置给avctx
     avctx->codec_id = codec->id;
     if(stream_lowres > av_codec_get_max_lowres(codec)){
         av_log(avctx, AV_LOG_WARNING, "The maximum value for lowres supported by the decoder is %d\n",
@@ -2891,13 +2899,14 @@ static int stream_component_open(FFPlayer *ffp, int stream_index)
     case AVMEDIA_TYPE_AUDIO:
 #if CONFIG_AVFILTER
         {
+            //过滤器上下文
             AVFilterContext *sink;
-
             is->audio_filter_src.freq           = avctx->sample_rate;
             is->audio_filter_src.channels       = avctx->channels;
             is->audio_filter_src.channel_layout = get_valid_channel_layout(avctx->channel_layout, avctx->channels);
             is->audio_filter_src.fmt            = avctx->sample_fmt;
             SDL_LockMutex(ffp->af_mutex);
+            //配置音频过滤器
             if ((ret = configure_audio_filters(ffp, ffp->afilters, 0)) < 0) {
                 SDL_UnlockMutex(ffp->af_mutex);
                 goto fail;
@@ -2914,10 +2923,11 @@ static int stream_component_open(FFPlayer *ffp, int stream_index)
         nb_channels    = avctx->channels;
         channel_layout = avctx->channel_layout;
 #endif
-
+        //准备音频输出
         /* prepare audio output */
         if ((ret = audio_open(ffp, channel_layout, nb_channels, sample_rate, &is->audio_tgt)) < 0)
             goto fail;
+        //设置音频解码器信息
         ffp_set_audio_codec_info(ffp, AVCODEC_MODULE_NAME, avcodec_get_name(avctx->codec_id));
         is->audio_hw_buf_size = ret;
         is->audio_src = is->audio_tgt;
@@ -2934,11 +2944,13 @@ static int stream_component_open(FFPlayer *ffp, int stream_index)
         is->audio_stream = stream_index;
         is->audio_st = ic->streams[stream_index];
 
+        //解码器初始化
         decoder_init(&is->auddec, avctx, &is->audioq, is->continue_read_thread);
         if ((is->ic->iformat->flags & (AVFMT_NOBINSEARCH | AVFMT_NOGENSEARCH | AVFMT_NO_BYTE_SEEK)) && !is->ic->iformat->read_seek) {
             is->auddec.start_pts = is->audio_st->start_time;
             is->auddec.start_pts_tb = is->audio_st->time_base;
         }
+        //开始解码
         if ((ret = decoder_start(&is->auddec, audio_thread, ffp, "ff_audio_dec")) < 0)
             goto out;
         SDL_AoutPauseAudio(ffp->aout, 0);
@@ -2962,11 +2974,14 @@ static int stream_component_open(FFPlayer *ffp, int stream_index)
                     goto fail;
             }
         } else {
+            //解码器初始化
             decoder_init(&is->viddec, avctx, &is->videoq, is->continue_read_thread);
+            //打开视频解码器
             ffp->node_vdec = ffpipeline_open_video_decoder(ffp->pipeline, ffp);
             if (!ffp->node_vdec)
                 goto fail;
         }
+        //开始视频解码
         if ((ret = decoder_start(&is->viddec, video_thread, ffp, "ff_video_dec")) < 0)
             goto out;
 
@@ -3006,10 +3021,11 @@ static int stream_component_open(FFPlayer *ffp, int stream_index)
 
         is->subtitle_stream = stream_index;
         is->subtitle_st = ic->streams[stream_index];
-
+        //设置解码器
         ffp_set_subtitle_codec_info(ffp, AVCODEC_MODULE_NAME, avcodec_get_name(avctx->codec_id));
-
+        //解码器初始化
         decoder_init(&is->subdec, avctx, &is->subtitleq, is->continue_read_thread);
+        //开始解码
         if ((ret = decoder_start(&is->subdec, subtitle_thread, ffp, "ff_subtitle_dec")) < 0)
             goto out;
         break;
@@ -3091,14 +3107,17 @@ static int read_thread(void *arg)
     is->last_subtitle_stream = is->subtitle_stream = -1;
     is->eof = 0;
 
+    //创建上下文结构体，这个结构体是最上层的结构体，表示输入上下文
     ic = avformat_alloc_context();
     if (!ic) {
         av_log(NULL, AV_LOG_FATAL, "Could not allocate context.\n");
         ret = AVERROR(ENOMEM);
         goto fail;
     }
+    //设置中断函数,如果出错或者退出，就可以立刻退出
     ic->interrupt_callback.callback = decode_interrupt_cb;
     ic->interrupt_callback.opaque = is;
+
     if (!av_dict_get(ffp->format_opts, "scan_all_pmts", NULL, AV_DICT_MATCH_CASE)) {
         av_dict_set(&ffp->format_opts, "scan_all_pmts", "1", AV_DICT_DONT_OVERWRITE);
         scan_all_pmts_set = 1;
@@ -3117,12 +3136,15 @@ static int read_thread(void *arg)
 
     if (ffp->iformat_name)
         is->iformat = av_find_input_format(ffp->iformat_name);
+    
+    //打开文件，主要是探测协议类型，如果是网络文件则创建网络链接等
     err = avformat_open_input(&ic, is->filename, is->iformat, &ffp->format_opts);
     if (err < 0) {
         print_error(is->filename, err);
         ret = -1;
         goto fail;
     }
+    //通知上层输入打开了，发出通知
     ffp_notify_msg1(ffp, FFP_MSG_OPEN_INPUT);
 
     if (scan_all_pmts_set)
@@ -3151,7 +3173,7 @@ static int read_thread(void *arg)
     if (ffp->find_stream_info) {
         AVDictionary **opts = setup_find_stream_info_opts(ic, ffp->codec_opts);
         int orig_nb_streams = ic->nb_streams;
-
+        //找到流信息
         do {
             if (av_stristart(is->filename, "data:", NULL) && orig_nb_streams > 0) {
                 for (i = 0; i < orig_nb_streams; i++) {
@@ -3159,14 +3181,15 @@ static int read_thread(void *arg)
                         break;
                     }
                 }
-
                 if (i == orig_nb_streams) {
                     break;
                 }
             }
+            //探测媒体类型，可得到当前文件的封装格式，音视频编码参数等信息
             err = avformat_find_stream_info(ic, opts);
         } while(0);
         ffp_notify_msg1(ffp, FFP_MSG_FIND_STREAM_INFO);
+
 
         for (i = 0; i < orig_nb_streams; i++)
             av_dict_free(&opts[i]);
@@ -3179,6 +3202,8 @@ static int read_thread(void *arg)
             goto fail;
         }
     }
+
+
     if (ic->pb)
         ic->pb->eof_reached = 0; // FIXME hack, ffplay maybe should not use avio_feof() to test for the end
 
@@ -3195,9 +3220,9 @@ static int read_thread(void *arg)
 
 #endif
     /* if seeking requested, we execute it */
+    //start_time 不为0 则seek到指定位置
     if (ffp->start_time != AV_NOPTS_VALUE) {
         int64_t timestamp;
-
         timestamp = ffp->start_time;
         /* add the stream start time */
         if (ic->start_time != AV_NOPTS_VALUE)
@@ -3240,6 +3265,8 @@ static int read_thread(void *arg)
         st_index[AVMEDIA_TYPE_VIDEO] = first_h264_stream;
         av_log(NULL, AV_LOG_WARNING, "multiple video stream found, prefer first h264 stream: %d\n", first_h264_stream);
     }
+
+    //寻找最适合到流
     if (!ffp->video_disable)
         st_index[AVMEDIA_TYPE_VIDEO] =
             av_find_best_stream(ic, AVMEDIA_TYPE_VIDEO,
@@ -3270,14 +3297,14 @@ static int read_thread(void *arg)
     }
 #endif
 
-    /* open the streams */
+    /* 打开视频、音频解码器。在此会打开相应解码器，并创建相应的解码线程 */
     if (st_index[AVMEDIA_TYPE_AUDIO] >= 0) {
         stream_component_open(ffp, st_index[AVMEDIA_TYPE_AUDIO]);
     } else {
         ffp->av_sync_type = AV_SYNC_VIDEO_MASTER;
         is->av_sync_type  = ffp->av_sync_type;
     }
-
+    
     ret = -1;
     if (st_index[AVMEDIA_TYPE_VIDEO] >= 0) {
         ret = stream_component_open(ffp, st_index[AVMEDIA_TYPE_VIDEO]);
@@ -3285,10 +3312,14 @@ static int read_thread(void *arg)
     if (is->show_mode == SHOW_MODE_NONE)
         is->show_mode = ret >= 0 ? SHOW_MODE_VIDEO : SHOW_MODE_RDFT;
 
+
     if (st_index[AVMEDIA_TYPE_SUBTITLE] >= 0) {
         stream_component_open(ffp, st_index[AVMEDIA_TYPE_SUBTITLE]);
     }
+
+    //组件打开通知
     ffp_notify_msg1(ffp, FFP_MSG_COMPONENT_OPEN);
+
 
     if (!ffp->ijkmeta_delay_init) {
         ijkmeta_set_avformat_context_l(ffp->meta, ic);
