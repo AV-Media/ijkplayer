@@ -667,6 +667,7 @@ static void frame_queue_unref_item(Frame *vp)
     avsubtitle_free(&vp->sub);
 }
 
+//分配出max_size大小的队列
 static int frame_queue_init(FrameQueue *f, PacketQueue *pktq, int max_size, int keep_last)
 {
     int i;
@@ -3657,13 +3658,16 @@ static VideoState *stream_open(FFPlayer *ffp, const char *filename, AVInputForma
 #endif
 
     /* start video display */
-    if (frame_queue_init(&is->pictq, &is->videoq, ffp->pictq_size, 1) < 0)
+    //初始化视频解码缓存
+    if (frame_queue_init(&is->pictq/*帧队列*/, &is->videoq/*视频包队列*/, ffp->pictq_size, 1) < 0)
         goto fail;
     if (frame_queue_init(&is->subpq, &is->subtitleq, SUBPICTURE_QUEUE_SIZE, 0) < 0)
         goto fail;
-    if (frame_queue_init(&is->sampq, &is->audioq, SAMPLE_QUEUE_SIZE, 1) < 0)
+    //初始化音频解码缓存
+    if (frame_queue_init(&is->sampq/*音频帧队列*/, &is->audioq/*音频数据包队列*/, SAMPLE_QUEUE_SIZE, 1) < 0)
         goto fail;
 
+    //包队列初始化
     if (packet_queue_init(&is->videoq) < 0 ||
         packet_queue_init(&is->audioq) < 0 ||
         packet_queue_init(&is->subtitleq) < 0)
@@ -3684,10 +3688,13 @@ static VideoState *stream_open(FFPlayer *ffp, const char *filename, AVInputForma
         ffp->enable_accurate_seek = 0;
     }
 
+    //重置音视频时钟
     init_clock(&is->vidclk, &is->videoq.serial);
     init_clock(&is->audclk, &is->audioq.serial);
     init_clock(&is->extclk, &is->extclk.serial);
     is->audio_clock_serial = -1;
+
+    //音量设置
     if (ffp->startup_volume < 0)
         av_log(NULL, AV_LOG_WARNING, "-volume=%d < 0, setting to 0\n", ffp->startup_volume);
     if (ffp->startup_volume > 100)
@@ -3703,14 +3710,16 @@ static VideoState *stream_open(FFPlayer *ffp, const char *filename, AVInputForma
     ffp->is = is;
     is->pause_req = !ffp->start_on_prepared;
 
-    is->video_refresh_tid = SDL_CreateThreadEx(&is->_video_refresh_tid, video_refresh_thread, ffp, "ff_vout");
+    //创建视频渲染线程
+    is->video_refresh_tid = SDL_CreateThreadEx(&is->_video_refresh_tid, video_refresh_thread/*视频渲染线程执行的是这个方法*/, ffp, "ff_vout");
     if (!is->video_refresh_tid) {
         av_freep(&ffp->is);
         return NULL;
     }
 
+    //创建读数据线程
     is->initialized_decoder = 0;
-    is->read_tid = SDL_CreateThreadEx(&is->_read_tid, read_thread, ffp, "ff_read");
+    is->read_tid = SDL_CreateThreadEx(&is->_read_tid, read_thread/*读线程执行的是read_thread这个方法*/, ffp, "ff_read");
     if (!is->read_tid) {
         av_log(NULL, AV_LOG_FATAL, "SDL_CreateThread(): %s\n", SDL_GetError());
         goto fail;
@@ -3719,7 +3728,9 @@ static VideoState *stream_open(FFPlayer *ffp, const char *filename, AVInputForma
     if (ffp->async_init_decoder && !ffp->video_disable && ffp->video_mime_type && strlen(ffp->video_mime_type) > 0
                     && ffp->mediacodec_default_name && strlen(ffp->mediacodec_default_name) > 0) {
         if (ffp->mediacodec_all_videos || ffp->mediacodec_avc || ffp->mediacodec_hevc || ffp->mediacodec_mpeg2) {
+            //解码器初始化
             decoder_init(&is->viddec, NULL, &is->videoq, is->continue_read_thread);
+            // 初始化Pipleline中的视频解码器
             ffp->node_vdec = ffpipeline_init_video_decoder(ffp->pipeline, ffp);
         }
     }
