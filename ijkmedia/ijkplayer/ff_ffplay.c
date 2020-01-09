@@ -2006,6 +2006,7 @@ static int audio_thread(void *arg)
 
     do {
         ffp_audio_statistic_l(ffp);
+        //从音频解码器中获取到一帧数据
         if ((got_frame = decoder_decode_frame(ffp, &is->auddec, frame, NULL)) < 0)
             goto the_end;
 
@@ -2134,7 +2135,7 @@ static int audio_thread(void *arg)
                     }
                     SDL_UnlockMutex(ffp->af_mutex);
                 }
-
+            //音频缓存中添加解码后的数据
             if ((ret = av_buffersrc_add_frame(is->in_audio_filter, frame)) < 0)
                 goto the_end;
 
@@ -2150,6 +2151,7 @@ static int audio_thread(void *arg)
                 af->duration = av_q2d((AVRational){frame->nb_samples, frame->sample_rate});
 
                 av_frame_move_ref(af->frame, frame);
+                // 刷新缓存
                 frame_queue_push(&is->sampq);
 
 #if CONFIG_AVFILTER
