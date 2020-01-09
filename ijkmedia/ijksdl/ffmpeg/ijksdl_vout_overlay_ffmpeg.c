@@ -280,6 +280,7 @@ static SDL_Class g_vout_overlay_ffmpeg_class = {
     .name = "FFmpegVoutOverlay",
 };
 
+//这个后面回来再展开
 #ifndef __clang_analyzer__
 SDL_VoutOverlay *SDL_VoutFFmpeg_CreateOverlay(int width, int height, int frame_format, SDL_Vout *display)
 {
@@ -307,6 +308,7 @@ SDL_VoutOverlay *SDL_VoutFFmpeg_CreateOverlay(int width, int height, int frame_f
     SDLTRACE("SDL_VoutFFmpeg_CreateOverlay(w=%d, h=%d, fmt=%.4s(0x%x, dp=%p)\n",
         width, height, (const char*) &overlay_format, overlay_format, display);
 
+    //为VoutOverlay分配内存空间
     SDL_VoutOverlay *overlay = SDL_VoutOverlay_CreateInternal(sizeof(SDL_VoutOverlay_Opaque));
     if (!overlay) {
         ALOGE("overlay allocation failed");

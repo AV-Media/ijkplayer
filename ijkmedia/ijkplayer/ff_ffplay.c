@@ -2755,9 +2755,10 @@ static int audio_open(FFPlayer *opaque, int64_t wanted_channel_layout, int wante
     wanted_spec.format = AUDIO_S16SYS;
     wanted_spec.silence = 0;
     wanted_spec.samples = FFMAX(SDL_AUDIO_MIN_BUFFER_SIZE, 2 << av_log2(wanted_spec.freq / SDL_AoutGetAudioPerSecondCallBacks(ffp->aout)));
+    //回调???????
     wanted_spec.callback = sdl_audio_callback;
     wanted_spec.userdata = opaque;
-    while (SDL_AoutOpenAudio(ffp->aout, &wanted_spec, &spec) < 0) {
+    while (SDL_AoutOpenAudio(ffp->aout, &wanted_spec, &spec) < 0/*打开音频输出设备*/) {
         /* avoid infinity loop on exit. --by bbcallen */
         if (is->abort_request)
             return -1;
@@ -2799,7 +2800,7 @@ static int audio_open(FFPlayer *opaque, int64_t wanted_channel_layout, int wante
         av_log(NULL, AV_LOG_ERROR, "av_samples_get_buffer_size failed\n");
         return -1;
     }
-
+    //设置音频默认的延迟
     SDL_AoutSetDefaultLatencySeconds(ffp->aout, ((double)(2 * spec.size)) / audio_hw_params->bytes_per_sec);
     return spec.size;
 }
@@ -2969,6 +2970,7 @@ static int stream_component_open(FFPlayer *ffp, int stream_index)
             }
             if (ret || !ffp->node_vdec) {
                 decoder_init(&is->viddec, avctx, &is->videoq, is->continue_read_thread);
+                //打开解码器
                 ffp->node_vdec = ffpipeline_open_video_decoder(ffp->pipeline, ffp);
                 if (!ffp->node_vdec)
                     goto fail;
@@ -3242,6 +3244,7 @@ static int read_thread(void *arg)
     int h264_stream_count = 0;
     int first_h264_stream = -1;
     for (i = 0; i < ic->nb_streams; i++) {
+        //遍历流
         AVStream *st = ic->streams[i];
         enum AVMediaType type = st->codecpar->codec_type;
         st->discard = AVDISCARD_ALL;
@@ -3360,6 +3363,7 @@ static int read_thread(void *arg)
         ffp_notify_msg3(ffp, FFP_MSG_SAR_CHANGED, codecpar->sample_aspect_ratio.num, codecpar->sample_aspect_ratio.den);
     }
     ffp->prepared = true;
+    //prepare 结束通知
     ffp_notify_msg1(ffp, FFP_MSG_PREPARED);
     if (!ffp->render_wait_start && !ffp->start_on_prepared) {
         while (is->pause_req && !is->abort_request) {
@@ -3403,8 +3407,9 @@ static int read_thread(void *arg)
             int64_t seek_max    = is->seek_rel < 0 ? seek_target - is->seek_rel - 2: INT64_MAX;
 // FIXME the +-2 is due to rounding being not done in the correct direction in generation
 //      of the seek_pos/seek_rel variables
-
+            //打开缓存开关
             ffp_toggle_buffering(ffp, 1);
+            //通知缓存更新了
             ffp_notify_msg3(ffp, FFP_MSG_BUFFERING_UPDATE, 0, 0);
             ret = avformat_seek_file(is->ic, -1, seek_min, seek_target, seek_max, is->seek_flags);
             if (ret < 0) {
@@ -3544,6 +3549,9 @@ static int read_thread(void *arg)
             }
         }
         pkt->flags = 0;
+
+        //这里才是正常的流程
+        //读取一帧
         ret = av_read_frame(ic, pkt);
         if (ret < 0) {
             int pb_eof = 0;
@@ -3600,12 +3608,14 @@ static int read_thread(void *arg)
 
         if (pkt->flags & AV_PKT_FLAG_DISCONTINUITY) {
             if (is->audio_stream >= 0) {
+                //将读取到的数据添加到音频队列audioq
                 packet_queue_put(&is->audioq, &flush_pkt);
             }
             if (is->subtitle_stream >= 0) {
                 packet_queue_put(&is->subtitleq, &flush_pkt);
             }
             if (is->video_stream >= 0) {
+                //将读取到的数据添加到视频队列audioq
                 packet_queue_put(&is->videoq, &flush_pkt);
             }
         }
@@ -3911,15 +3921,19 @@ void ffp_global_init()
 
     ALOGD("ijkmediaplayer version : %s", ijkmp_version());
     /* register all codecs, demux and protocols */
+    // 注册解码器，解复用器和协议
     avcodec_register_all();
 #if CONFIG_AVDEVICE
+    // 注册音视频输入输出设备
     avdevice_register_all();
 #endif
 #if CONFIG_AVFILTER
+    // 注册音视频过滤器
     avfilter_register_all();
 #endif
     av_register_all();
 
+    //注册ijk音视频组件
     ijkav_register_all();
 
     avformat_network_init();
@@ -4331,6 +4345,7 @@ int ffp_prepare_async_l(FFPlayer *ffp, const char *file_name)
 
     //创建audio output 节点
     if (!ffp->aout) {
+        //打开音频输出
         ffp->aout = ffpipeline_open_audio_output(ffp->pipeline, ffp);
         if (!ffp->aout)
             return -1;
@@ -4616,13 +4631,16 @@ void ffp_toggle_buffering_l(FFPlayer *ffp, int buffering_on)
 
     VideoState *is = ffp->is;
     if (buffering_on && !is->buffering_on) {
+        //打开缓存
         av_log(ffp, AV_LOG_DEBUG, "ffp_toggle_buffering_l: start\n");
         is->buffering_on = 1;
         stream_update_pause_l(ffp);
         if (is->seek_req) {
             is->seek_buffering = 1;
+            //发出开始缓存的通知
             ffp_notify_msg2(ffp, FFP_MSG_BUFFERING_START, 1);
         } else {
+            //发出开始缓存的通知
             ffp_notify_msg2(ffp, FFP_MSG_BUFFERING_START, 0);
         }
     } else if (!buffering_on && is->buffering_on){
@@ -4630,9 +4648,11 @@ void ffp_toggle_buffering_l(FFPlayer *ffp, int buffering_on)
         is->buffering_on = 0;
         stream_update_pause_l(ffp);
         if (is->seek_buffering) {
+            //发出结束缓存的通知
             is->seek_buffering = 0;
             ffp_notify_msg2(ffp, FFP_MSG_BUFFERING_END, 1);
         } else {
+            //发出结束缓存的通知
             ffp_notify_msg2(ffp, FFP_MSG_BUFFERING_END, 0);
         }
     }

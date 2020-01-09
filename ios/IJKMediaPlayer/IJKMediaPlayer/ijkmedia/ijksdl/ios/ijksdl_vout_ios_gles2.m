@@ -41,9 +41,11 @@ struct SDL_Vout_Opaque {
 static SDL_VoutOverlay *vout_create_overlay_l(int width, int height, int frame_format, SDL_Vout *vout)
 {
     switch (frame_format) {
+        //使用Toolbox
         case IJK_AV_PIX_FMT__VIDEO_TOOLBOX:
             return SDL_VoutVideoToolBox_CreateOverlay(width, height, vout);
         default:
+        //使用FFmpeg
             return SDL_VoutFFmpeg_CreateOverlay(width, height, frame_format, vout);
     }
 }
@@ -95,7 +97,7 @@ static int vout_display_overlay_l(SDL_Vout *vout, SDL_VoutOverlay *overlay)
 
     if (gl_view.isThirdGLView) {
         IJKOverlay ijk_overlay;
-
+        //帧数据
         ijk_overlay.w = overlay->w;
         ijk_overlay.h = overlay->h;
         ijk_overlay.format = overlay->format;
@@ -109,6 +111,7 @@ static int vout_display_overlay_l(SDL_Vout *vout, SDL_VoutOverlay *overlay)
             ijk_overlay.pixel_buffer = SDL_VoutOverlayVideoToolBox_GetCVPixelBufferRef(overlay);
         }
 #endif
+        //　显示像素
         if ([gl_view respondsToSelector:@selector(display_pixels:)]) {
              [gl_view display_pixels:&ijk_overlay];
         }

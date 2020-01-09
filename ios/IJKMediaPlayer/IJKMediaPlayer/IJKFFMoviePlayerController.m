@@ -180,7 +180,7 @@ void IJKFFIOStatCompleteRegister(void (*cb)(const char *url,
 
     self = [super init];
     if (self) {
-        //1. ijk所需要的音视频组件初始化
+        //1. ijk所需要的音视频组件初始化[了解FFmpeg的时候回过头看下这部分代码]
         ijkmp_global_init();
         //回调初始化
         ijkmp_global_set_inject_callback(ijkff_inject_callback);
@@ -188,7 +188,7 @@ void IJKFFIOStatCompleteRegister(void (*cb)(const char *url,
         //版本检查
         [IJKFFMoviePlayerController checkIfFFmpegVersionMatch:NO];
 
-        //2. ijk 配置
+        //2. ijk 配置 [回头看下这部分代码]
         if (options == nil)
             options = [IJKFFOptions optionsByDefault];
 
@@ -202,10 +202,10 @@ void IJKFFIOStatCompleteRegister(void (*cb)(const char *url,
         memset(&_cacheStat, 0, sizeof(_cacheStat));
         _monitor = [[IJKFFMonitor alloc] init];
 
-        // 3. init media resource
+        // 3. 设置视频源地址
         _urlString = aUrlString;
 
-        // 4. 创建播放器
+        // 4. 创建播放器，消息队列
         _mediaPlayer = ijkmp_ios_create(media_player_msg_loop/*对应的消息循环*/);
         //消息池
         _msgPool = [[IJKFFMoviePlayerMessagePool alloc] init];
@@ -246,15 +246,21 @@ void IJKFFIOStatCompleteRegister(void (*cb)(const char *url,
         
         self.shouldShowHudView = options.showHudView;
 
+        //将_glView赋给_mediaPlayer
         ijkmp_ios_set_glview(_mediaPlayer, _glView);
+        //设置显示格式为fcc-_es2
         ijkmp_set_option(_mediaPlayer, IJKMP_OPT_CATEGORY_PLAYER, "overlay-format", "fcc-_es2");
+
+
 #ifdef DEBUG
         [IJKFFMoviePlayerController setLogLevel:k_IJK_LOG_DEBUG];
 #else
         [IJKFFMoviePlayerController setLogLevel:k_IJK_LOG_SILENT];
 #endif
+
         // 6. init audio sink 初始化音频接收器
         [[IJKAudioKit sharedInstance] setupAudioSession];
+
 
         // 7. 将options应用到_mediaPlayer
         [options applyTo:_mediaPlayer];
