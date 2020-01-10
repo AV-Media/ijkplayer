@@ -2179,6 +2179,8 @@ static int audio_thread(void *arg)
 
 static int decoder_start(Decoder *d, int (*fn)(void *), void *arg, const char *name)
 {
+    //decoder_start中 启动了PacketQueue，并创建了一个名为"decoder"的线程专门用于解码，
+    //具体的解码流程由传入参数fn决定。比如对于视频，是video_thread。
     packet_queue_start(d->queue);
     d->decoder_tid = SDL_CreateThreadEx(&d->_decoder_tid, fn, arg, name);
     if (!d->decoder_tid) {
@@ -2843,7 +2845,7 @@ static int stream_component_open(FFPlayer *ffp, int stream_index)
     if (stream_index < 0 || stream_index >= ic->nb_streams)
         return -1;
 
-    //创建解码器上下文
+    //创建解码器上下文AVCodecContex
     avctx = avcodec_alloc_context3(NULL);
     if (!avctx)
         return AVERROR(ENOMEM);
@@ -2863,7 +2865,7 @@ static int stream_component_open(FFPlayer *ffp, int stream_index)
         case AVMEDIA_TYPE_VIDEO   : is->last_video_stream    = stream_index; forced_codec_name = ffp->video_codec_name; break;
         default: break;
     }
-    //通过名称寻找解码器
+    //如果用户有指定解码器，则设置forced_codec_name 通过名称寻找解码器
     if (forced_codec_name)
         codec = avcodec_find_decoder_by_name(forced_codec_name);
     
@@ -2903,6 +2905,7 @@ static int stream_component_open(FFPlayer *ffp, int stream_index)
         av_dict_set_int(&opts, "lowres", stream_lowres, 0);
     if (avctx->codec_type == AVMEDIA_TYPE_VIDEO || avctx->codec_type == AVMEDIA_TYPE_AUDIO)
         av_dict_set(&opts, "refcounted_frames", "1", 0);
+    //找到解码器后，就可以通过avcodec_open2打开解码器了
     if ((ret = avcodec_open2(avctx, codec, &opts)) < 0) {
         goto fail;
     }
@@ -3071,13 +3074,13 @@ static int decode_interrupt_cb(void *ctx)
 }
 
 static int stream_has_enough_packets(AVStream *st, int stream_id, PacketQueue *queue, int min_frames) {
-    return stream_id < 0 ||
-           queue->abort_request ||
+    return stream_id < 0 /*流没有打开*/ ||
+           queue->abort_request /*有退出请求*/ ||
            (st->disposition & AV_DISPOSITION_ATTACHED_PIC) ||
 #ifdef FFP_MERGE
            queue->nb_packets > MIN_FRAMES && (!queue->duration || av_q2d(st->time_base) * queue->duration > 1.0);
 #endif
-           queue->nb_packets > min_frames;
+           queue->nb_packets > min_frames; //队列内包个数大于MIN_FRAMES（=25）
 }
 
 static int is_realtime(AVFormatContext *s)
@@ -3097,6 +3100,8 @@ static int is_realtime(AVFormatContext *s)
 }
 
 /* this thread gets the stream from the disk or the network */
+//准备阶段：打开文件，检测Stream信息，打开解码器
+//主循环读数据，解封装：读取Packet，存入PacketQueue
 static int read_thread(void *arg)
 {
     FFPlayer *ffp = arg;
@@ -3137,9 +3142,11 @@ static int read_thread(void *arg)
         goto fail;
     }
     //设置中断函数,如果出错或者退出，就可以立刻退出
+    //用于ffmpeg内部在执行耗时操作时检查是否有退出请求，并提前中断，避免用户退出请求没有及时响应
     ic->interrupt_callback.callback = decode_interrupt_cb;
     ic->interrupt_callback.opaque = is;
 
+    ////特定选项处理
     if (!av_dict_get(ffp->format_opts, "scan_all_pmts", NULL, AV_DICT_MATCH_CASE)) {
         av_dict_set(&ffp->format_opts, "scan_all_pmts", "1", AV_DICT_DONT_OVERWRITE);
         scan_all_pmts_set = 1;
@@ -3208,6 +3215,7 @@ static int read_thread(void *arg)
                 }
             }
             //探测媒体类型，可得到当前文件的封装格式，音视频编码参数等信息
+            //该函数是通过读取媒体文件的部分数据来分析流信息。在一些缺少头信息的封装下特别有用，比如说MPEG
             err = avformat_find_stream_info(ic, opts);
         } while(0);
         ffp_notify_msg1(ffp, FFP_MSG_FIND_STREAM_INFO);
@@ -3263,8 +3271,11 @@ static int read_thread(void *arg)
     int video_stream_count = 0;
     int h264_stream_count = 0;
     int first_h264_stream = -1;
+    //接下来就可以选取用于播放的视频流、音频流和字幕流了。实际操作中，选择的策略很多，
+    //一般根据具体需求来定——比如可以是选择最高清的视频流；选择本地语言的音频流；
+    //直接选择第一条视频、音频轨道；等等。
     for (i = 0; i < ic->nb_streams; i++) {
-        //遍历流
+        //遍历流,根据用户指定来查找流
         AVStream *st = ic->streams[i];
         enum AVMediaType type = st->codecpar->codec_type;
         st->discard = AVDISCARD_ALL;
@@ -3289,7 +3300,8 @@ static int read_thread(void *arg)
         av_log(NULL, AV_LOG_WARNING, "multiple video stream found, prefer first h264 stream: %d\n", first_h264_stream);
     }
 
-    //寻找最适合到流
+    //寻找最适合到流,利用av_find_best_stream选择流
+    //如果用户没有指定流，或指定部分流，或指定流不存在，则主要由av_find_best_stream发挥作用。
     if (!ffp->video_disable)
         st_index[AVMEDIA_TYPE_VIDEO] =
             av_find_best_stream(ic, AVMEDIA_TYPE_VIDEO,
@@ -3320,6 +3332,8 @@ static int read_thread(void *arg)
     }
 #endif
 
+    // 经过以上步骤，文件打开成功，且获取了流的基本信息，并选择音频流、视频流、字幕流。
+    // 接下来就可以所选流对应的解码器了。
     /* 打开视频、音频解码器。在此会打开相应解码器，并创建相应的解码线程 */
     if (st_index[AVMEDIA_TYPE_AUDIO] >= 0) {
         stream_component_open(ffp, st_index[AVMEDIA_TYPE_AUDIO]);
@@ -3332,6 +3346,8 @@ static int read_thread(void *arg)
     if (st_index[AVMEDIA_TYPE_VIDEO] >= 0) {
         ret = stream_component_open(ffp, st_index[AVMEDIA_TYPE_VIDEO]);
     }
+
+    ////选择怎么显示，如果视频打开成功，就显示视频画面，否则，显示音频对应的频谱图
     if (is->show_mode == SHOW_MODE_NONE)
         is->show_mode = ret >= 0 ? SHOW_MODE_VIDEO : SHOW_MODE_RDFT;
 
@@ -3372,6 +3388,7 @@ static int read_thread(void *arg)
         assert("invalid streams");
     }
 
+    //infinite_buffer是可选选项，但在文件是实时协议时，且用户未指定时，这个值会被强制为1：
     if (ffp->infinite_buffer < 0 && is->realtime)
         ffp->infinite_buffer = 1;
 
@@ -3398,16 +3415,22 @@ static int read_thread(void *arg)
     if (ffp->seek_at_start > 0) {
         ffp_seek_to_l(ffp, (long)(ffp->seek_at_start));
     }
+    
+    //====================主循环==============
 
     for (;;) {
         if (is->abort_request)
-            break;
+            break;//处理退出请求
 #ifdef FFP_MERGE
+        ///处理暂停/恢复
+        //如果paused变量改变，说明暂停状态改变
         if (is->paused != is->last_paused) {
             is->last_paused = is->paused;
             if (is->paused)
+                //如果暂停调用av_read_pause
                 is->read_pause_return = av_read_pause(ic);
             else
+                //如果恢复播放调用av_read_play
                 av_read_play(ic);
         }
 #endif
@@ -3421,6 +3444,7 @@ static int read_thread(void *arg)
             continue;
         }
 #endif
+        //处理seek请求
         if (is->seek_req) {
             int64_t seek_target = is->seek_pos;
             int64_t seek_min    = is->seek_rel > 0 ? seek_target - is->seek_rel + 2: INT64_MIN;
@@ -3431,11 +3455,13 @@ static int read_thread(void *arg)
             ffp_toggle_buffering(ffp, 1);
             //通知缓存更新了
             ffp_notify_msg3(ffp, FFP_MSG_BUFFERING_UPDATE, 0, 0);
+            //处理seek操作
             ret = avformat_seek_file(is->ic, -1, seek_min, seek_target, seek_max, is->seek_flags);
             if (ret < 0) {
                 av_log(NULL, AV_LOG_ERROR,
                        "%s: error while seeking\n", is->ic->filename);
             } else {
+                //清除PacketQueue的缓存，并放入一个flush_pkt。放入的flush_pkt可以让PacketQueue的serial增1，以区分seek前后的数据
                 if (is->audio_stream >= 0) {
                     packet_queue_flush(&is->audioq);
                     packet_queue_put(&is->audioq, &flush_pkt);
@@ -3453,6 +3479,7 @@ static int read_thread(void *arg)
                     packet_queue_flush(&is->videoq);
                     packet_queue_put(&is->videoq, &flush_pkt);
                 }
+                //同步外部时钟。
                 if (is->seek_flags & AVSEEK_FLAG_BYTE) {
                    set_clock(&is->extclk, NAN, 0);
                 } else {
@@ -3468,6 +3495,7 @@ static int read_thread(void *arg)
             is->queue_attachments_req = 1;
             is->eof = 0;
 #ifdef FFP_MERGE
+            //如果当前是暂停状态，就跳到seek后的下一帧
             if (is->paused)
                 step_to_next_frame(is);
 #endif
@@ -3513,28 +3541,40 @@ static int read_thread(void *arg)
             is->queue_attachments_req = 0;
         }
 
+        //控制缓冲区大小
         /* if the queue are full, no need to read more */
         if (ffp->infinite_buffer<1 && !is->seek_req &&
+            //audioq，videoq，subtitleq三个PacketQueue的总字节数达到了MAX_QUEUE_SIZE（15M）
 #ifdef FFP_MERGE
               (is->audioq.size + is->videoq.size + is->subtitleq.size > MAX_QUEUE_SIZE
 #else
               (is->audioq.size + is->videoq.size + is->subtitleq.size > ffp->dcc.max_buffer_size
 #endif
+            //音频、视频、字幕流都已有够用的包
             || (   stream_has_enough_packets(is->audio_st, is->audio_stream, &is->audioq, MIN_FRAMES)
                 && stream_has_enough_packets(is->video_st, is->video_stream, &is->videoq, MIN_FRAMES)
                 && stream_has_enough_packets(is->subtitle_st, is->subtitle_stream, &is->subtitleq, MIN_FRAMES)))) {
             if (!is->eof) {
                 ffp_toggle_buffering(ffp, 0);
             }
+            //延迟10毫秒
             /* wait 10 ms */
             SDL_LockMutex(wait_mutex);
             SDL_CondWaitTimeout(is->continue_read_thread, wait_mutex, 10);
             SDL_UnlockMutex(wait_mutex);
             continue;
         }
+        //播放完成，循环播放
+        //1. 不在暂停状态
+        //2. 音频未打开，或者打开了，但是解码已解码完毕，serial等于PacketQueue的serial，并且PacketQueue中没有节点了
+        //3. 视频未打开，或者打开了，但是解码已解码完毕，serial等于PacketQueue的serial，并且PacketQueue中没有节点了
         if ((!is->paused || completed) &&
             (!is->audio_st || (is->auddec.finished == is->audioq.serial && frame_queue_nb_remaining(&is->sampq) == 0)) &&
             (!is->video_st || (is->viddec.finished == is->videoq.serial && frame_queue_nb_remaining(&is->pictq) == 0))) {
+            
+            // 在确认已结束的情况下，用户有两个变量可以控制播放器行为
+            // loop: 控制播放次数（当前这次也算在内，也就是最小就是1次了），0表示无限次
+            // autoexit：自动退出，也就是播放完成后自动退出。
             if (ffp->loop != 1 && (!ffp->loop || --ffp->loop)) {
                 stream_seek(is, ffp->start_time != AV_NOPTS_VALUE ? ffp->start_time : 0, 0, 0);
             } else if (ffp->autoexit) {
@@ -3571,11 +3611,12 @@ static int read_thread(void *arg)
         pkt->flags = 0;
 
         //这里才是正常的流程
-        //读取一帧
+        //av_read_frame从文件中读取视频数据，并获取一个AVPacket（解封装后的数据）
         ret = av_read_frame(ic, pkt);
         if (ret < 0) {
             int pb_eof = 0;
             int pb_error = 0;
+            //文件读取完了，调用packet_queue_put_nullpacket通知解码线程
             if ((ret == AVERROR_EOF || avio_feof(ic->pb)) && !is->eof) {
                 ffp_check_buffering_l(ffp);
                 pb_eof = 1;
@@ -3590,8 +3631,10 @@ static int read_thread(void *arg)
                 pb_error = AVERROR_EXIT;
             }
 
+            //结束
             if (pb_eof) {
                 if (is->video_stream >= 0)
+                    //放入一帧的结尾标志nullpacket
                     packet_queue_put_nullpacket(&is->videoq, is->video_stream);
                 if (is->audio_stream >= 0)
                     packet_queue_put_nullpacket(&is->audioq, is->audio_stream);
@@ -3599,6 +3642,7 @@ static int read_thread(void *arg)
                     packet_queue_put_nullpacket(&is->subtitleq, is->subtitle_stream);
                 is->eof = 1;
             }
+            //错误
             if (pb_error) {
                 if (is->video_stream >= 0)
                     packet_queue_put_nullpacket(&is->videoq, is->video_stream);
@@ -3626,6 +3670,7 @@ static int read_thread(void *arg)
             is->eof = 0;
         }
 
+        //新的一个片段package
         if (pkt->flags & AV_PKT_FLAG_DISCONTINUITY) {
             if (is->audio_stream >= 0) {
                 //将读取到的数据添加到音频队列audioq
@@ -3641,6 +3686,7 @@ static int read_thread(void *arg)
         }
 
         /* check if packet is in play range specified by user, then queue, otherwise discard */
+        //如果在时间范围内，那么根据stream_index，放入到视频、音频、和字幕的PacketQueue中
         stream_start_time = ic->streams[pkt->stream_index]->start_time;
         pkt_ts = pkt->pts == AV_NOPTS_VALUE ? pkt->dts : pkt->pts;
         pkt_in_play_range = ffp->duration == AV_NOPTS_VALUE ||
