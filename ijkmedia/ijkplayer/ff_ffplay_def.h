@@ -164,14 +164,14 @@ typedef struct MyAVPacketList {
 } MyAVPacketList;
 
 typedef struct PacketQueue {
-    MyAVPacketList *first_pkt, *last_pkt;
-    int nb_packets;
-    int size;
-    int64_t duration;
-    int abort_request;
-    int serial;
-    SDL_mutex *mutex;
-    SDL_cond *cond;
+    MyAVPacketList *first_pkt, *last_pkt;   //队首，队尾
+    int nb_packets;                         //队列中一共有多少个节点
+    int size;                               //队列所有节点字节总数，用于计算cache大小
+    int64_t duration;                       //队列所有节点的合计时长
+    int abort_request;                      //是否要中止队列操作，用于安全快速退出播放
+    int serial;                             //序列号，和MyAVPacketList的serial作用相同
+    SDL_mutex *mutex;                       //用于维持PacketQueue的多线程安全
+    SDL_cond *cond;                         //用于读、写线程相互通知
     MyAVPacketList *recycle_pkt;
     int recycle_count;
     int alloc_count;
